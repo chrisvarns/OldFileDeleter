@@ -110,11 +110,18 @@ namespace OldFileDeleter
             }
 
             Console.WriteLine("Deleting {1}/{2} files from \"{0}\"", rootDir, FilesToDelete.Count, AllFileInfos.Count);
-            Parallel.ForEach(FilesToDelete, File =>
+            foreach(var File in FilesToDelete)
             {
-                Console.WriteLine("    {0} {1}", File.LastAccessed.ToString(), File.FullPath);
+                try
+                {
+                    System.IO.File.Delete(File.FullPath);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("{0}: ", File.Name, e.Message);
+                }
                 System.IO.File.Delete(File.FullPath);
-            });
+            };
 
 			DateTime endtime = DateTime.Now;
 			TimeSpan total = endtime - starttime;
