@@ -14,7 +14,8 @@ namespace OldFileDeleter
 			DateTime starttime = DateTime.Now;
 
 			string rootDir = "";
-			int numToDelete = 10;
+			int numToDelete = -1;
+			long targetSizeBytes = -1;
 
 			int numArgs = args.Count();
 			int argsParsed = 0;
@@ -29,31 +30,65 @@ namespace OldFileDeleter
 				{
 					numToDelete = int.Parse(args[argsParsed++]);
 				}
-				else
+				else if(arg == "-targetsizekb")
+                {
+					targetSizeBytes = long.Parse(args[argsParsed++]) * 1024;
+                }
+                else if (arg == "-targetsizemb")
+                {
+                    targetSizeBytes = long.Parse(args[argsParsed++]) * 1024 * 1024;
+                }
+                else if (arg == "-targetsizegb")
+                {
+                    targetSizeBytes = long.Parse(args[argsParsed++]) * 1024 * 1024 * 1024;
+                }
+                else
 				{
 					Console.Error.WriteLine("Unrecognised argument {0}", arg);
+					return;
 				}
 			}
 
-			Console.WriteLine("Deleting {1} files from \"{0}\"", rootDir, numToDelete);
 			Console.WriteLine("Getting file list...");
+            var rootDirInfo = new DirectoryInfo(rootDir);
+            var allFileInfos = rootDirInfo.GetFiles("*.*", SearchOption.AllDirectories);
 
-			var rootDirInfo = new DirectoryInfo(rootDir);
-			var allFileInfos = rootDirInfo.GetFiles("*.*", SearchOption.AllDirectories);
+            Console.WriteLine("Sorting...");
+            Array.Sort(allFileInfos, delegate (FileInfo a, FileInfo b)
+            {
+                return a.LastAccessTime.Ticks.CompareTo(b.LastAccessTime.Ticks);
+            });
 
-			Console.WriteLine("Sorting...");
-
-			Array.Sort(allFileInfos, delegate (FileInfo a, FileInfo b)
-			{
-				return a.LastWriteTimeUtc.Ticks.CompareTo(b.LastWriteTimeUtc.Ticks);
-			});
-
-			Console.WriteLine("Deleting Files:");
-			for(int i = 0; i < numToDelete; i++)
-			{
-				Console.WriteLine("    {0} {1}", allFileInfos[i].LastWriteTimeUtc.ToString(), allFileInfos[i].FullName);
-				File.Delete(allFileInfos[i].FullName);
+            List<FileInfo> FilesToDelete = new List<FileInfo>();
+			if(numToDelete > 0)
+            {
+                for (int i = 0; i < numToDelete && i < allFileInfos.Length; i++)
+                {
+					FilesToDelete.Add(allFileInfos[i]);
+                }
+            }
+            else if(targetSizeBytes > 0)
+            {
+				long totalSizeBytes = allFileInfos.Sum(x => x.Length);
+				int lastDeletedIdx = -1;
+				while(totalSizeBytes > targetSizeBytes && allFileInfos.Length != FilesToDelete.Count)
+                {
+					++lastDeletedIdx;
+					totalSizeBytes -= targetSizeBytes;
+					FilesToDelete.Add(allFileInfos[lastDeletedIdx]);
+                }
+            }
+            else
+            {
+				Console.WriteLine("No num or target size specified");
 			}
+
+            Console.WriteLine("Deleting {1}/{2} files from \"{0}\"", rootDir, FilesToDelete.Count, allFileInfos.Length);
+			foreach (FileInfo File in FilesToDelete)
+            {
+                Console.WriteLine("    {0} {1}", File.LastAccessTimeUtc.ToString(), File.FullName);
+                File.Delete();
+            }
 
 			DateTime endtime = DateTime.Now;
 			TimeSpan total = endtime - starttime;
