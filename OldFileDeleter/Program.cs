@@ -13,11 +13,12 @@ namespace OldFileDeleter
 		{
 			DateTime starttime = DateTime.Now;
 
-			string rootDir = "";
-			int numToDelete = -1;
-			long targetSizeBytes = -1;
+            string rootDir = "";
+            int numToDelete = -1;
+            long targetSizeBytes = -1;
+            List<string> ignoreFiles = new List<string>();
 
-			int numArgs = args.Count();
+            int numArgs = args.Count();
 			int argsParsed = 0;
 			while(argsParsed != numArgs)
 			{
@@ -26,6 +27,10 @@ namespace OldFileDeleter
 				{
 					rootDir = args[argsParsed++];
 				}
+				else if(arg == "-ignore")
+                {
+					ignoreFiles.Add(args[argsParsed++]);
+                }
 				else if(arg == "-num")
 				{
 					numToDelete = int.Parse(args[argsParsed++]);
@@ -51,7 +56,7 @@ namespace OldFileDeleter
 
 			Console.WriteLine("Getting file list...");
             var rootDirInfo = new DirectoryInfo(rootDir);
-            var allFileInfos = rootDirInfo.GetFiles("*.*", SearchOption.AllDirectories);
+            var allFileInfos = rootDirInfo.GetFiles("*.*", SearchOption.AllDirectories).Where(x => !ignoreFiles.Contains(x.Name)).ToArray();
 
             Console.WriteLine("Sorting...");
             Array.Sort(allFileInfos, delegate (FileInfo a, FileInfo b)
