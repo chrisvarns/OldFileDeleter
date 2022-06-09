@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -7,6 +8,15 @@ using System.Threading.Tasks;
 
 namespace OldFileDeleter
 {
+    [DebuggerDisplay("{Name}")]
+    class FileInfo
+    {
+        public string Name;
+        public string FullPath;
+        public long FileSize;
+        public DateTime LastAccessed;
+    }
+
 	class Program
 	{
 		static void Main(string[] args)
@@ -56,44 +66,55 @@ namespace OldFileDeleter
 
 			Console.WriteLine("Getting file list...");
             var rootDirInfo = new DirectoryInfo(rootDir);
-            var allFileInfos = rootDirInfo.GetFiles("*.*", SearchOption.AllDirectories).Where(x => !ignoreFiles.Contains(x.Name)).ToArray();
+            List<FileInfo> AllFileInfos = new List<FileInfo>();
+            var EnumeratedFiles = rootDirInfo.EnumerateFiles("*.*", SearchOption.AllDirectories);
+            long TotalFileSize = 0;
+            foreach(var EnumeratedFile in EnumeratedFiles)
+            {
+                if (ignoreFiles.Contains(EnumeratedFile.Name)) continue;
+
+                TotalFileSize += EnumeratedFile.Length;
+
+                FileInfo fileInfo = new FileInfo();
+                fileInfo.Name = EnumeratedFile.Name;
+                fileInfo.FullPath = EnumeratedFile.FullName;
+                fileInfo.FileSize = EnumeratedFile.Length;
+                fileInfo.LastAccessed = EnumeratedFile.LastAccessTimeUtc;
+                AllFileInfos.Add(fileInfo);
+            }
 
             Console.WriteLine("Sorting...");
-            Array.Sort(allFileInfos, delegate (FileInfo a, FileInfo b)
+            AllFileInfos.Sort(delegate (FileInfo a, FileInfo b)
             {
-                return a.LastAccessTime.Ticks.CompareTo(b.LastAccessTime.Ticks);
+                return a.LastAccessed.Ticks.CompareTo(b.LastAccessed.Ticks);
             });
 
+            Console.WriteLine("Deciding what to delete...");
             List<FileInfo> FilesToDelete = new List<FileInfo>();
-			if(numToDelete > 0)
-            {
-                for (int i = 0; i < numToDelete && i < allFileInfos.Length; i++)
-                {
-					FilesToDelete.Add(allFileInfos[i]);
-                }
-            }
-            else if(targetSizeBytes > 0)
-            {
-				long totalSizeBytes = allFileInfos.Sum(x => x.Length);
-				int lastDeletedIdx = -1;
-				while(totalSizeBytes > targetSizeBytes && allFileInfos.Length != FilesToDelete.Count)
-                {
-					++lastDeletedIdx;
-					totalSizeBytes -= targetSizeBytes;
-					FilesToDelete.Add(allFileInfos[lastDeletedIdx]);
-                }
-            }
-            else
-            {
-				Console.WriteLine("No num or target size specified");
-			}
 
-            Console.WriteLine("Deleting {1}/{2} files from \"{0}\"", rootDir, FilesToDelete.Count, allFileInfos.Length);
-			foreach (FileInfo File in FilesToDelete)
+            if(targetSizeBytes > 0)
             {
-                Console.WriteLine("    {0} {1}", File.LastAccessTimeUtc.ToString(), File.FullName);
-                File.Delete();
+                long SizeRemainingToDelete = TotalFileSize - targetSizeBytes;
+                numToDelete = 0;
+				while(SizeRemainingToDelete > 0 && AllFileInfos.Count > numToDelete)
+                {
+                    SizeRemainingToDelete -= AllFileInfos[numToDelete].FileSize;
+                    numToDelete++;
+                }
             }
+
+            if (numToDelete > 0)
+            {
+                numToDelete = Math.Min(numToDelete, AllFileInfos.Count);
+                FilesToDelete = AllFileInfos.GetRange(0, numToDelete);
+            }
+
+            Console.WriteLine("Deleting {1}/{2} files from \"{0}\"", rootDir, FilesToDelete.Count, AllFileInfos.Count);
+            Parallel.ForEach(FilesToDelete, File =>
+            {
+                Console.WriteLine("    {0} {1}", File.LastAccessed.ToString(), File.FullPath);
+                System.IO.File.Delete(File.FullPath);
+            });
 
 			DateTime endtime = DateTime.Now;
 			TimeSpan total = endtime - starttime;
