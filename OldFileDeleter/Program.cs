@@ -8,15 +8,6 @@ using System.Threading.Tasks;
 
 namespace OldFileDeleter
 {
-    [DebuggerDisplay("{Name}")]
-    class FileInfo
-    {
-        public string Name;
-        public string FullPath;
-        public long FileSize;
-        public DateTime LastAccessed;
-    }
-
 	class Program
 	{
 		static void Main(string[] args)
@@ -66,27 +57,20 @@ namespace OldFileDeleter
 
 			Console.WriteLine("Getting file list...");
             var rootDirInfo = new DirectoryInfo(rootDir);
-            List<FileInfo> AllFileInfos = new List<FileInfo>();
-            var EnumeratedFiles = rootDirInfo.EnumerateFiles("*.*", SearchOption.AllDirectories);
-            long TotalFileSize = 0;
-            foreach(var EnumeratedFile in EnumeratedFiles)
+            var EnumeratedFiles = rootDirInfo.EnumerateFiles("*.*", SearchOption.AllDirectories).Where(x => !ignoreFiles.Contains(x.Name));
+            List<FileInfo> AllFileInfos = new List<FileInfo>(EnumeratedFiles);
+            long TotalFileSize = AllFileInfos.Sum(x => x.Length);
+
+            if(targetSizeBytes > 0 && targetSizeBytes > TotalFileSize)
             {
-                if (ignoreFiles.Contains(EnumeratedFile.Name)) continue;
-
-                TotalFileSize += EnumeratedFile.Length;
-
-                FileInfo fileInfo = new FileInfo();
-                fileInfo.Name = EnumeratedFile.Name;
-                fileInfo.FullPath = EnumeratedFile.FullName;
-                fileInfo.FileSize = EnumeratedFile.Length;
-                fileInfo.LastAccessed = EnumeratedFile.LastAccessTimeUtc;
-                AllFileInfos.Add(fileInfo);
+                Console.WriteLine("TargetSize={0} is higher than current TotalSize={1}, earlying out...", targetSizeBytes, TotalFileSize);
+                return;
             }
 
             Console.WriteLine("Sorting...");
             AllFileInfos.Sort(delegate (FileInfo a, FileInfo b)
             {
-                return a.LastAccessed.Ticks.CompareTo(b.LastAccessed.Ticks);
+                return a.LastAccessTime.Ticks.CompareTo(b.LastAccessTime.Ticks);
             });
 
             Console.WriteLine("Deciding what to delete...");
@@ -98,7 +82,7 @@ namespace OldFileDeleter
                 numToDelete = 0;
 				while(SizeRemainingToDelete > 0 && AllFileInfos.Count > numToDelete)
                 {
-                    SizeRemainingToDelete -= AllFileInfos[numToDelete].FileSize;
+                    SizeRemainingToDelete -= AllFileInfos[numToDelete].Length;
                     numToDelete++;
                 }
             }
@@ -114,14 +98,13 @@ namespace OldFileDeleter
             {
                 try
                 {
-                    System.IO.File.Delete(File.FullPath);
+                    File.Delete();
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("{0}: ", File.Name, e.Message);
+                    Console.WriteLine("{0}: {1}", File.Name, e.Message);
                 }
-                System.IO.File.Delete(File.FullPath);
-            };
+            }
 
 			DateTime endtime = DateTime.Now;
 			TimeSpan total = endtime - starttime;
